@@ -1,0 +1,17 @@
+.env
+db.sqlite3
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+ENV/
+venv.bak/
+migrations/
+staticfiles/
+media/
+logs/
+*.log
+.dockerignore

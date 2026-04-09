@@ -27,7 +27,6 @@ A full-stack Django application that fetches, stores, and serves UK Met Office r
 └──────────────┘                     └──────────┬───────────┘
                                                 │ upsert
                                      ┌──────────▼───────────┐
-                                     │  PostgreSQL           │
                                      │  Parameter / Region   │
                                      │  WeatherDataset       │
                                      │  WeatherRecord        │
@@ -69,7 +68,7 @@ A full-stack Django application that fetches, stores, and serves UK Met Office r
 
 ### Prerequisites
 - Python 3.11+
-- PostgreSQL (or use SQLite for local-only)
+- SQLite for local-only
 - Git
 
 ```bash
@@ -153,56 +152,45 @@ docker compose down -v    # -v removes volumes (deletes DB data)
 
 ## Cloud Deployment
 
-### Option 1 — Render.com (recommended — free tier available)
+### Option 1 — AWS EC2 + GitHub Actions (recommended — free tier available)
 
-1. Push code to GitHub.
-2. Go to [render.com](https://render.com) → **New Web Service** → connect your repo.
-3. Set:
-   - **Build command:** `pip install -r requirements.txt && python manage.py collectstatic --noinput && python manage.py migrate`
-   - **Start command:** `gunicorn metoffice_weather.wsgi:application --bind 0.0.0.0:$PORT`
-4. Add a **PostgreSQL** database from Render dashboard, copy the `DATABASE_URL` into env vars.
-5. Set env vars: `SECRET_KEY`, `DEBUG=False`, `ALLOWED_HOSTS=your-app.onrender.com`.
-6. Deploy. Once live, open the Shell tab and run:
-   ```bash
-   python manage.py fetch_weather --parameter Tmax Tmean Rainfall --region UK England
-   ```
+This guide walks you through deploying the Django WeatherApp on an AWS EC2 instance using Docker, Docker Hub, and GitHub Actions with **GitHub Secrets** for secure authentication.
 
-### Option 2 — Railway.app
+## 📋 Prerequisites
 
-```bash
-# Install Railway CLI
-npm install -g @railway/cli
-railway login
-
-# Create project
-railway init
-railway add postgresql
-railway add redis
-
-# Set env vars
-railway variables set SECRET_KEY=... DEBUG=False ALLOWED_HOSTS=...
-
-# Deploy
-railway up
-railway run python manage.py migrate
-railway run python manage.py fetch_weather --parameter Tmax Tmean --region UK England
-```
-
-### Option 3 — AWS ECS (Fargate)
-
-1. Push Docker image to ECR:
-   ```bash
-   aws ecr create-repository --repository-name metoffice-weather
-   docker build -t metoffice-weather .
-   docker tag metoffice-weather:latest <account_id>.dkr.ecr.<region>.amazonaws.com/metoffice-weather:latest
-   aws ecr get-login-password | docker login --username AWS --password-stdin <account_id>.dkr.ecr.<region>.amazonaws.com
-   docker push <account_id>.dkr.ecr.<region>.amazonaws.com/metoffice-weather:latest
-   ```
-2. Create an ECS Cluster → Task Definition → Service using the image above.
-3. Add an RDS PostgreSQL instance and set `DATABASE_URL` in the task environment.
-4. Create an Application Load Balancer pointing to port 8000.
+- An AWS account with IAM permissions to create EC2 instances.
+- A Docker Hub account.
+- A GitHub repository containing your code.
+- Basic knowledge of SSH and AWS Console.
 
 ---
+
+## 1. Prepare the EC2 Instance
+
+### 1.1 Launch an EC2 Instance
+
+1. Go to **EC2 Dashboard** → **Launch Instance**.
+2. Choose an **Amazon Machine Image (AMI)**:
+   - Amazon Linux 2023 (recommended) or Ubuntu 22.04.
+3. Select an instance type (e.g., `t2.micro` for free tier).
+4. **Key pair**: Create or upload an existing `.pem` key pair – **save it locally** (you’ll need it for GitHub).
+5. **Network settings**:
+   - Enable **Auto-assign public IP**.
+   - Create a security group with these inbound rules:
+     | Type      | Port | Source          |
+     |-----------|------|-----------------|
+     | SSH       | 22   | Your IP /0 (for CI) |
+     | HTTP      | 80   | 0.0.0.0/0       |
+     | HTTPS     | 443  | 0.0.0.0/0       |
+     | Custom TCP| 8000 | 0.0.0.0/0 (if needed) |
+6. **User data** (optional, but you can paste a bootstrap script to install Docker):
+   ```bash
+   #!/bin/bash
+   yum update -y
+   amazon-linux-extras install docker -y
+   service docker start
+   usermod -a -G docker ec2-user
+   chkconfig docker on
 
 ## API Reference
 
