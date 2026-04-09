@@ -1,0 +1,835 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>UK Climate Explorer — Met Office Data</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700;900&family=IBM+Plex+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    :root {
+      --ink: #0d1117;
+      --paper: #f5f0e8;
+      --fog: #e0d9cd;
+      --mist: #c8bfb0;
+      --storm: #1e3a5f;
+      --rain: #2e6da4;
+      --sun: #c8860a;
+      --frost: #4fa3c8;
+      --heat: #c0392b;
+      --accent: #2e6da4;
+      --grid: rgba(46,109,164,0.1);
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'IBM Plex Mono', monospace;
+      background: var(--paper);
+      color: var(--ink);
+      min-height: 100vh;
+    }
+
+    /* ── Header ── */
+    header {
+      background: var(--storm);
+      color: var(--paper);
+      padding: 2rem 3rem;
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      border-bottom: 4px solid var(--rain);
+      position: relative;
+      overflow: hidden;
+    }
+    header::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: repeating-linear-gradient(
+        90deg,
+        transparent,
+        transparent 60px,
+        rgba(255,255,255,0.02) 60px,
+        rgba(255,255,255,0.02) 61px
+      );
+    }
+    .header-main h1 {
+      font-family: 'Playfair Display', serif;
+      font-size: clamp(1.8rem, 4vw, 3rem);
+      font-weight: 900;
+      line-height: 1;
+      letter-spacing: -0.02em;
+    }
+    .header-main h1 span { color: var(--frost); }
+    .header-sub {
+      font-size: 0.7rem;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: var(--mist);
+      margin-top: 0.5rem;
+    }
+    .header-badge {
+      font-size: 0.65rem;
+      text-align: right;
+      color: var(--mist);
+      line-height: 1.8;
+    }
+    .header-badge strong { color: var(--paper); display: block; font-size: 0.8rem; }
+
+    /* ── Layout ── */
+    .container { max-width: 1400px; margin: 0 auto; padding: 0 2rem; }
+
+    .controls-bar {
+      background: var(--storm);
+      border-bottom: 2px solid var(--rain);
+      padding: 1.2rem 3rem;
+      display: flex;
+      gap: 1.5rem;
+      align-items: flex-end;
+      flex-wrap: wrap;
+    }
+    .ctrl-group { display: flex; flex-direction: column; gap: 0.3rem; min-width: 150px; }
+    .ctrl-group label {
+      font-size: 0.6rem;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: var(--mist);
+    }
+    select, input[type="number"] {
+      background: rgba(255,255,255,0.07);
+      border: 1px solid rgba(255,255,255,0.15);
+      color: var(--paper);
+      padding: 0.5rem 0.75rem;
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.8rem;
+      border-radius: 3px;
+      appearance: none;
+      cursor: pointer;
+      transition: border-color 0.2s;
+    }
+    select:hover, input[type="number"]:hover {
+      border-color: var(--frost);
+    }
+    select option { background: var(--storm); color: var(--paper); }
+
+    .btn {
+      padding: 0.55rem 1.4rem;
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.75rem;
+      font-weight: 500;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      border: none;
+      border-radius: 3px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .btn-primary { background: var(--rain); color: white; }
+    .btn-primary:hover { background: var(--frost); }
+    .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-secondary { background: transparent; color: var(--mist); border: 1px solid var(--mist); }
+    .btn-secondary:hover { color: var(--paper); border-color: var(--paper); }
+
+    /* ── Main content ── */
+    main { padding: 2rem 3rem; display: grid; gap: 2rem; }
+
+    .stats-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 1rem;
+    }
+    .stat-card {
+      background: white;
+      border: 1px solid var(--fog);
+      border-top: 3px solid var(--rain);
+      padding: 1.2rem 1.4rem;
+      position: relative;
+    }
+    .stat-card .label {
+      font-size: 0.6rem;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--mist);
+      margin-bottom: 0.4rem;
+    }
+    .stat-card .value {
+      font-family: 'Playfair Display', serif;
+      font-size: 2rem;
+      font-weight: 700;
+      color: var(--storm);
+      line-height: 1;
+    }
+    .stat-card .value sup { font-size: 0.9rem; font-weight: 400; }
+    .stat-card .sub { font-size: 0.65rem; color: var(--mist); margin-top: 0.3rem; }
+
+    /* ── Charts ── */
+    .charts-grid {
+      display: grid;
+      grid-template-columns: 2fr 1fr;
+      gap: 1.5rem;
+    }
+    @media (max-width: 900px) { .charts-grid { grid-template-columns: 1fr; } }
+
+    .chart-panel {
+      background: white;
+      border: 1px solid var(--fog);
+      padding: 1.5rem;
+    }
+    .chart-panel h3 {
+      font-family: 'Playfair Display', serif;
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: var(--storm);
+      margin-bottom: 0.3rem;
+    }
+    .chart-panel .chart-meta {
+      font-size: 0.65rem;
+      color: var(--mist);
+      margin-bottom: 1rem;
+      letter-spacing: 0.05em;
+    }
+    .chart-wrap { position: relative; }
+
+    /* ── Data table ── */
+    .table-panel {
+      background: white;
+      border: 1px solid var(--fog);
+      overflow: hidden;
+    }
+    .table-header {
+      background: var(--storm);
+      color: var(--paper);
+      padding: 1rem 1.5rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .table-header h3 {
+      font-family: 'Playfair Display', serif;
+      font-size: 1rem;
+    }
+    .table-scroll { overflow-x: auto; max-height: 400px; overflow-y: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.72rem; }
+    thead { position: sticky; top: 0; }
+    thead th {
+      background: var(--fog);
+      padding: 0.6rem 0.8rem;
+      text-align: right;
+      font-weight: 500;
+      letter-spacing: 0.06em;
+      color: var(--storm);
+      white-space: nowrap;
+    }
+    thead th:first-child { text-align: center; }
+    tbody tr:nth-child(even) { background: #fafaf7; }
+    tbody tr:hover { background: rgba(46,109,164,0.06); }
+    td {
+      padding: 0.5rem 0.8rem;
+      text-align: right;
+      border-bottom: 1px solid var(--fog);
+      font-variant-numeric: tabular-nums;
+    }
+    td:first-child {
+      text-align: center;
+      font-weight: 600;
+      color: var(--storm);
+      background: var(--fog);
+      position: sticky;
+      left: 0;
+    }
+    td.null { color: var(--mist); }
+    td.annual { font-weight: 600; color: var(--storm); background: rgba(46,109,164,0.05); }
+
+    /* ── Toast / status ── */
+    #toast {
+      position: fixed;
+      bottom: 2rem;
+      right: 2rem;
+      background: var(--storm);
+      color: var(--paper);
+      padding: 0.8rem 1.4rem;
+      font-size: 0.75rem;
+      border-left: 4px solid var(--frost);
+      transform: translateY(100px);
+      opacity: 0;
+      transition: all 0.3s;
+      z-index: 1000;
+      max-width: 360px;
+    }
+    #toast.show { transform: translateY(0); opacity: 1; }
+    #toast.error { border-color: var(--heat); }
+    #toast.success { border-color: #27ae60; }
+
+    /* ── Loading ── */
+    .spinner {
+      display: inline-block;
+      width: 14px; height: 14px;
+      border: 2px solid rgba(255,255,255,0.3);
+      border-top-color: white;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      margin-right: 0.4rem;
+      vertical-align: middle;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .empty-state {
+      text-align: center;
+      padding: 4rem 2rem;
+      color: var(--mist);
+    }
+    .empty-state .icon { font-size: 3rem; margin-bottom: 1rem; opacity: 0.4; }
+    .empty-state p { font-size: 0.8rem; line-height: 1.7; }
+
+    /* ── Section headings ── */
+    .section-rule {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      font-size: 0.65rem;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: var(--mist);
+    }
+    .section-rule::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--fog);
+    }
+
+    /* ── API Docs link ── */
+    .api-bar {
+      background: var(--fog);
+      border-top: 1px solid var(--mist);
+      padding: 0.8rem 3rem;
+      font-size: 0.65rem;
+      color: var(--mist);
+      display: flex;
+      gap: 2rem;
+      flex-wrap: wrap;
+    }
+    .api-bar a { color: var(--rain); text-decoration: none; }
+    .api-bar a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="header-main">
+    <h1>UK <span>Climate</span> Explorer</h1>
+    <p class="header-sub">Met Office Historical Series &mdash; Regional Summary Data</p>
+  </div>
+  <div class="header-badge">
+    <strong>Data Source</strong>
+    Met Office UK Climate<br>
+    Regional Monthly Series
+  </div>
+</header>
+
+<!-- Controls bar -->
+<div class="controls-bar">
+  <div class="ctrl-group">
+    <label>Parameter</label>
+    <select id="paramSelect">
+      <option value="Tmax">Tmax — Max Temperature</option>
+      <option value="Tmin">Tmin — Min Temperature</option>
+      <option value="Tmean">Tmean — Mean Temperature</option>
+      <option value="Rainfall">Rainfall</option>
+      <option value="Sunshine">Sunshine</option>
+      <option value="Raindays1mm">Rain Days ≥1mm</option>
+      <option value="AirFrost">Air Frost Days</option>
+    </select>
+  </div>
+  <div class="ctrl-group">
+    <label>Region</label>
+    <select id="regionSelect">
+      <option value="UK">United Kingdom</option>
+      <option value="England">England</option>
+      <option value="Wales">Wales</option>
+      <option value="Scotland">Scotland</option>
+      <option value="Northern_Ireland">Northern Ireland</option>
+      <option value="England_and_Wales">England &amp; Wales</option>
+      <option value="England_N">England North</option>
+      <option value="England_S">England South</option>
+      <option value="Midlands">Midlands</option>
+      <option value="East_Anglia">East Anglia</option>
+    </select>
+  </div>
+  <div class="ctrl-group">
+    <label>Year From</label>
+    <input type="number" id="yearFrom" value="1884" min="1800" max="2030" style="width:100px">
+  </div>
+  <div class="ctrl-group">
+    <label>Year To</label>
+    <input type="number" id="yearTo" value="2024" min="1800" max="2030" style="width:100px">
+  </div>
+  <button class="btn btn-secondary" id="fetchBtn" title="Fetch data from Met Office API">
+    Fetch from Met Office
+  </button>
+  <button class="btn btn-primary" id="loadBtn">
+    Load Chart
+  </button>
+</div>
+
+<main class="container">
+
+  <!-- Stats row -->
+  <div>
+    <div class="section-rule" style="margin-bottom:1rem">Summary Statistics</div>
+    <div class="stats-row" id="statsRow">
+      <div class="stat-card">
+        <div class="label">Records loaded</div>
+        <div class="value" id="statCount">—</div>
+        <div class="sub">annual observations</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">Annual mean</div>
+        <div class="value" id="statMean">—</div>
+        <div class="sub" id="statMeanUnit">across all years</div>
+      </div>
+      <div class="stat-card" style="border-top-color: var(--heat)">
+        <div class="label">Highest annual</div>
+        <div class="value" id="statMax" style="color:var(--heat)">—</div>
+        <div class="sub" id="statMaxYear"></div>
+      </div>
+      <div class="stat-card" style="border-top-color: var(--frost)">
+        <div class="label">Lowest annual</div>
+        <div class="value" id="statMin" style="color:var(--frost)">—</div>
+        <div class="sub" id="statMinYear"></div>
+      </div>
+      <div class="stat-card" style="border-top-color: var(--sun)">
+        <div class="label">Trend (decade)</div>
+        <div class="value" id="statTrend">—</div>
+        <div class="sub" id="statTrendDir">linear regression</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Charts grid -->
+  <div>
+    <div class="section-rule" style="margin-bottom:1rem">Visualisation</div>
+    <div class="charts-grid">
+      <div class="chart-panel">
+        <h3 id="annualChartTitle">Annual Time Series</h3>
+        <p class="chart-meta" id="annualChartMeta">Select a parameter and region, then click Load Chart</p>
+        <div class="chart-wrap">
+          <canvas id="annualChart" height="260"></canvas>
+        </div>
+      </div>
+      <div class="chart-panel">
+        <h3>Monthly Climatology</h3>
+        <p class="chart-meta" id="monthlyChartMeta">Average value per calendar month</p>
+        <div class="chart-wrap">
+          <canvas id="monthlyChart" height="260"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Decade heatmap -->
+  <div>
+    <div class="section-rule" style="margin-bottom:1rem">Decade Heatmap</div>
+    <div class="chart-panel">
+      <h3>Annual Values by Decade</h3>
+      <p class="chart-meta">Grouped bar chart — each bar is one year, grouped by decade</p>
+      <canvas id="decadeChart" height="140"></canvas>
+    </div>
+  </div>
+
+  <!-- Data table -->
+  <div>
+    <div class="section-rule" style="margin-bottom:1rem">Raw Data</div>
+    <div class="table-panel">
+      <div class="table-header">
+        <h3 id="tableTitle">Monthly Records</h3>
+        <button class="btn btn-secondary" id="exportBtn" style="font-size:0.65rem;padding:0.4rem 1rem" onclick="exportCSV()">
+          Export CSV
+        </button>
+      </div>
+      <div class="table-scroll">
+        <div id="tableContainer">
+          <div class="empty-state">
+            <div class="icon">🌦</div>
+            <p>No data loaded yet.<br>Select a parameter &amp; region, then click <strong>Load Chart</strong>.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</main>
+
+<div class="api-bar">
+  <span>REST API:</span>
+  <a href="/api/">Browse API</a>
+  <a href="/api/docs/">Swagger Docs</a>
+  <a href="/api/redoc/">ReDoc</a>
+  <a href="/admin/">Admin</a>
+  <span style="margin-left:auto">Source: Met Office UK Climate Datasets</span>
+</div>
+
+<div id="toast"></div>
+
+<script>
+  // ── Chart.js colour palette ──────────────────────────────────────────────
+  const RAIN_BLUE   = '#2e6da4';
+  const FROST_BLUE  = '#4fa3c8';
+  const HEAT_RED    = '#c0392b';
+  const SUN_AMBER   = '#c8860a';
+  const STORM_NAVY  = '#1e3a5f';
+  const FOG         = '#e0d9cd';
+
+  const PARAM_COLORS = {
+    Tmax: HEAT_RED, Tmin: FROST_BLUE, Tmean: RAIN_BLUE,
+    Rainfall: RAIN_BLUE, Sunshine: SUN_AMBER,
+    Raindays1mm: FROST_BLUE, AirFrost: FROST_BLUE,
+  };
+
+  const PARAM_UNITS = {
+    Tmax:'°C', Tmin:'°C', Tmean:'°C',
+    Rainfall:'mm', Sunshine:'hrs',
+    Raindays1mm:'days', AirFrost:'days',
+  };
+
+  // ── State ─────────────────────────────────────────────────────────────────
+  let annualChart, monthlyChart, decadeChart;
+  let currentData = [];
+
+  // ── Toast ─────────────────────────────────────────────────────────────────
+  function toast(msg, type='info') {
+    const el = document.getElementById('toast');
+    el.textContent = msg;
+    el.className = `show ${type}`;
+    clearTimeout(el._t);
+    el._t = setTimeout(() => el.className = '', 3500);
+  }
+
+  // ── Load data from API ───────────────────────────────────────────────────
+  async function loadData() {
+    const param  = document.getElementById('paramSelect').value;
+    const region = document.getElementById('regionSelect').value;
+    const from   = document.getElementById('yearFrom').value;
+    const to     = document.getElementById('yearTo').value;
+
+    const btn = document.getElementById('loadBtn');
+    btn.innerHTML = '<span class="spinner"></span> Loading…';
+    btn.disabled = true;
+
+    const url = `/api/records/?dataset__parameter__code=${param}&dataset__region__code=${region}&year__gte=${from}&year__lte=${to}&page_size=300`;
+    try {
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json = await res.json();
+      currentData = json.results || json;
+
+      if (!currentData.length) {
+        toast(`No data for ${param}/${region}. Try clicking "Fetch from Met Office" first.`, 'error');
+        renderEmpty();
+        return;
+      }
+
+      renderStats(currentData, param);
+      renderAnnualChart(currentData, param, region);
+      renderMonthlyChart(param, region, from, to);
+      renderDecadeChart(currentData, param);
+      renderTable(currentData, param);
+      toast(`Loaded ${currentData.length} records for ${param} / ${region}`, 'success');
+    } catch(e) {
+      toast(`Error: ${e.message}`, 'error');
+    } finally {
+      btn.innerHTML = 'Load Chart';
+      btn.disabled = false;
+    }
+  }
+
+  // ── Fetch from Met Office ─────────────────────────────────────────────────
+  async function fetchFromMetOffice() {
+    const param  = document.getElementById('paramSelect').value;
+    const region = document.getElementById('regionSelect').value;
+
+    const btn = document.getElementById('fetchBtn');
+    btn.innerHTML = '<span class="spinner"></span> Fetching…';
+    btn.disabled = true;
+
+    try {
+      const res = await fetch('/api/fetch/', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json', 'X-CSRFToken': getCookie('csrftoken')},
+        body: JSON.stringify({ parameter: param, region: region }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'Fetch failed');
+      toast(`✓ Fetched ${json.records_total} records (${json.records_new} new) for ${param}/${region}`, 'success');
+      await loadData();
+    } catch(e) {
+      toast(`Fetch failed: ${e.message}`, 'error');
+    } finally {
+      btn.innerHTML = 'Fetch from Met Office';
+      btn.disabled = false;
+    }
+  }
+
+  function getCookie(name) {
+    const v = document.cookie.match('(^|;) ?' + name + '=([^;]*)(;|$)');
+    return v ? v[2] : '';
+  }
+
+  // ── Stats ─────────────────────────────────────────────────────────────────
+  function renderStats(data, param) {
+    const annuals = data.filter(d => d.annual != null);
+    if (!annuals.length) return;
+    const vals = annuals.map(d => d.annual);
+    const mean = vals.reduce((a,b)=>a+b,0)/vals.length;
+    const maxR = annuals.reduce((a,b)=>b.annual>a.annual?b:a);
+    const minR = annuals.reduce((a,b)=>b.annual<a.annual?b:a);
+
+    // Linear trend per decade
+    const trend = linearTrend(annuals.map(d=>d.year), vals) * 10;
+
+    const u = PARAM_UNITS[param] || '';
+    document.getElementById('statCount').textContent = data.length;
+    document.getElementById('statMean').innerHTML = `${mean.toFixed(1)}<sup>${u}</sup>`;
+    document.getElementById('statMax').innerHTML = `${maxR.annual.toFixed(1)}<sup>${u}</sup>`;
+    document.getElementById('statMaxYear').textContent = `Year ${maxR.year}`;
+    document.getElementById('statMin').innerHTML = `${minR.annual.toFixed(1)}<sup>${u}</sup>`;
+    document.getElementById('statMinYear').textContent = `Year ${minR.year}`;
+    document.getElementById('statTrend').innerHTML = `${trend>=0?'+':''}${trend.toFixed(2)}<sup>${u}</sup>`;
+    document.getElementById('statTrendDir').textContent = trend > 0 ? '↗ warming / increasing' : '↘ cooling / decreasing';
+  }
+
+  function linearTrend(xs, ys) {
+    const n = xs.length;
+    const sumX = xs.reduce((a,b)=>a+b,0);
+    const sumY = ys.reduce((a,b)=>a+b,0);
+    const sumXY = xs.reduce((s,x,i)=>s+x*ys[i],0);
+    const sumX2 = xs.reduce((s,x)=>s+x*x,0);
+    return (n*sumXY - sumX*sumY) / (n*sumX2 - sumX*sumX);
+  }
+
+  // ── Annual chart ──────────────────────────────────────────────────────────
+  function renderAnnualChart(data, param, region) {
+    const color = PARAM_COLORS[param] || RAIN_BLUE;
+    const unit  = PARAM_UNITS[param] || '';
+    const labels = data.map(d=>d.year);
+    const vals   = data.map(d=>d.annual);
+
+    // Trend line
+    const xs = labels.filter((_,i)=>vals[i]!=null);
+    const ys = vals.filter(v=>v!=null);
+    const slope = linearTrend(xs, ys);
+    const intercept = (ys.reduce((a,b)=>a+b,0)/ys.length) - slope*(xs.reduce((a,b)=>a+b,0)/xs.length);
+    const trendVals = labels.map(y => slope*y + intercept);
+
+    document.getElementById('annualChartTitle').textContent = `${param} — Annual Series`;
+    document.getElementById('annualChartMeta').textContent = `${region.replace('_',' ')} · Annual values · ${unit}`;
+
+    if (annualChart) annualChart.destroy();
+    annualChart = new Chart(document.getElementById('annualChart'), {
+      data: {
+        labels,
+        datasets: [
+          {
+            type: 'bar',
+            label: `Annual ${param}`,
+            data: vals,
+            backgroundColor: vals.map(v => v == null ? 'transparent' :
+              color + (v > trendVals[labels.indexOf(v)] ? 'dd' : '66')),
+            borderColor: color,
+            borderWidth: 0,
+            borderRadius: 1,
+          },
+          {
+            type: 'line',
+            label: 'Trend',
+            data: trendVals,
+            borderColor: color,
+            borderWidth: 2,
+            borderDash: [6,3],
+            pointRadius: 0,
+            tension: 0,
+            fill: false,
+          }
+        ]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: true,
+        interaction: { intersect: false, mode: 'index' },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: ctx => `${ctx.dataset.label}: ${ctx.raw != null ? ctx.raw.toFixed(2)+' '+unit : '—'}`
+            }
+          }
+        },
+        scales: {
+          x: { grid:{ color: '#f0ece4' }, ticks:{ maxTicksLimit:12, font:{size:10} } },
+          y: {
+            grid:{ color:'#f0ece4' },
+            ticks:{ font:{size:10}, callback: v => `${v}${unit}` },
+            title:{ display:true, text:unit, font:{size:10} }
+          }
+        }
+      }
+    });
+  }
+
+  // ── Monthly climatology chart ─────────────────────────────────────────────
+  async function renderMonthlyChart(param, region, from, to) {
+    const url = `/api/records/monthly-averages/?parameter=${param}&region=${region}&year_from=${from}&year_to=${to}`;
+    try {
+      const res = await fetch(url);
+      if (!res.ok) return;
+      const json = await res.json();
+      const months = json.monthly_averages.map(m=>m.month);
+      const avgs   = json.monthly_averages.map(m=>m.average);
+      const color  = PARAM_COLORS[param] || RAIN_BLUE;
+      const unit   = PARAM_UNITS[param] || '';
+
+      document.getElementById('monthlyChartMeta').textContent =
+        `${region.replace('_',' ')} · ${json.year_range.from}–${json.year_range.to} avg · ${unit}`;
+
+      if (monthlyChart) monthlyChart.destroy();
+      monthlyChart = new Chart(document.getElementById('monthlyChart'), {
+        type: 'bar',
+        data: {
+          labels: months,
+          datasets: [{
+            label: `Avg ${param}`,
+            data: avgs,
+            backgroundColor: color + '99',
+            borderColor: color,
+            borderWidth: 1.5,
+            borderRadius: 2,
+          }]
+        },
+        options: {
+          responsive: true, maintainAspectRatio: true,
+          plugins: {
+            legend: { display: false },
+            tooltip: { callbacks: { label: ctx => `${ctx.raw != null ? ctx.raw.toFixed(2)+' '+unit : '—'}` } }
+          },
+          scales: {
+            x: { grid:{ display:false }, ticks:{ font:{size:10} } },
+            y: { grid:{ color:'#f0ece4' }, ticks:{ font:{size:10}, callback: v=>`${v}${unit}` } }
+          }
+        }
+      });
+    } catch(e) { /* silent */ }
+  }
+
+  // ── Decade chart ─────────────────────────────────────────────────────────
+  function renderDecadeChart(data, param) {
+    const byDecade = {};
+    data.forEach(d => {
+      if (d.annual == null) return;
+      const dec = Math.floor(d.year/10)*10;
+      if (!byDecade[dec]) byDecade[dec] = {years:[], vals:[]};
+      byDecade[dec].years.push(d.year);
+      byDecade[dec].vals.push(d.annual);
+    });
+
+    const decades = Object.keys(byDecade).sort();
+    const datasets = decades.map((dec, i) => {
+      const hue = 200 + i*5;
+      return {
+        label: `${dec}s`,
+        data: byDecade[dec].vals,
+        backgroundColor: `hsla(${hue},60%,45%,0.75)`,
+        borderColor: `hsl(${hue},60%,38%)`,
+        borderWidth: 1,
+        borderRadius: 2,
+      };
+    });
+
+    // Use max decade length for labels
+    const maxLen = Math.max(...decades.map(d=>byDecade[d].years.length));
+    const labels = Array.from({length:maxLen},(_,i)=>i+1);
+
+    if (decadeChart) decadeChart.destroy();
+    decadeChart = new Chart(document.getElementById('decadeChart'), {
+      type: 'bar',
+      data: { labels, datasets },
+      options: {
+        responsive: true, maintainAspectRatio: true,
+        plugins: { legend:{ position:'right', labels:{ font:{size:9}, boxWidth:12 } } },
+        scales: {
+          x: { display:false },
+          y: {
+            grid:{ color:'#f0ece4' },
+            ticks:{ font:{size:10}, callback: v=>`${v}${PARAM_UNITS[param]||''}` }
+          }
+        }
+      }
+    });
+  }
+
+  // ── Table ─────────────────────────────────────────────────────────────────
+  function renderTable(data, param) {
+    const unit = PARAM_UNITS[param] || '';
+    document.getElementById('tableTitle').textContent =
+      `Monthly Records — ${param} (${unit})`;
+
+    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const fields = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
+
+    let html = `<table>
+      <thead><tr>
+        <th>Year</th>
+        ${months.map(m=>`<th>${m}</th>`).join('')}
+        <th style="background:#ddd">Annual</th>
+      </tr></thead><tbody>`;
+
+    [...data].reverse().forEach(row => {
+      html += `<tr><td>${row.year}</td>`;
+      fields.forEach(f => {
+        const v = row[f];
+        html += v != null
+          ? `<td>${v.toFixed(1)}</td>`
+          : `<td class="null">—</td>`;
+      });
+      const ann = row.annual;
+      html += ann != null
+        ? `<td class="annual">${ann.toFixed(1)}</td>`
+        : `<td class="annual null">—</td>`;
+      html += '</tr>';
+    });
+    html += '</tbody></table>';
+    document.getElementById('tableContainer').innerHTML = html;
+  }
+
+  function renderEmpty() {
+    document.getElementById('tableContainer').innerHTML = `
+      <div class="empty-state">
+        <div class="icon">🌦</div>
+        <p>No data loaded. Click <strong>Fetch from Met Office</strong> to retrieve it.</p>
+      </div>`;
+  }
+
+  // ── CSV Export ────────────────────────────────────────────────────────────
+  function exportCSV() {
+    if (!currentData.length) { toast('No data to export', 'error'); return; }
+    const param  = document.getElementById('paramSelect').value;
+    const region = document.getElementById('regionSelect').value;
+    const fields = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
+    const header = ['year','jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec','annual'];
+    const rows = [header.join(',')];
+    currentData.forEach(d => {
+      const row = [d.year, ...fields.map(f=>d[f]??''), d.annual??''];
+      rows.push(row.join(','));
+    });
+    const blob = new Blob([rows.join('\n')], {type:'text/csv'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `metoffice_${param}_${region}.csv`;
+    a.click();
+  }
+
+  // ── Events ────────────────────────────────────────────────────────────────
+  document.getElementById('loadBtn').addEventListener('click', loadData);
+  document.getElementById('fetchBtn').addEventListener('click', fetchFromMetOffice);
+</script>
+</body>
+</html>
