@@ -1,0 +1,12 @@
+- hosts: aws_ec2
+  become: true
+  vars_files:
+    - vault.yml
+  pre_tasks:
+    - name: Ensure Python exists
+      raw: test -e /usr/bin/python3 || apt install -y python3
+
+  roles:
+    - docker
+    - secrets
+    - deploy_app

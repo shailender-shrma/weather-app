@@ -1,0 +1,59 @@
+name: CI-CD
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build image
+        run: docker build -t metoffice_weather:${{ github.sha }} -f ansible/docker/Dockerfile .
+
+      - name: Login DockerHub
+        run: |
+          echo "${{ secrets.DOCKER_PAT }}" | \
+          docker login -u "${{ secrets.DOCKER_USER }}" --password-stdin
+
+      - name: Push image
+        run: |
+          docker tag metoffice_weather:${{ github.sha }} shailendershrma/metoffice_weather:${{ github.sha }}
+          docker push shailendershrma/metoffice_weather:${{ github.sha }}
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_KEY }}" > ~/.ssh/metoffice_weather.pem
+          chmod 600 ~/.ssh/metoffice_weather.pem
+
+      - name: Install Ansible & deps
+        run: |
+          pip install ansible boto3 botocore 
+          ansible-galaxy collection install amazon.aws
+
+      - name: Deploy via Ansible
+        env:
+          ANSIBLE_HOST_KEY_CHECKING: False
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          DOCKER_USER: ${{ secrets.DOCKER_USER }}
+          DOCKER_PAT: ${{ secrets.DOCKER_PAT }}
+          AWS_DEFAULT_REGION: ap-south-1
+          ANSIBLE_VAULT_PASSWORD: ${{ secrets.ANSIBLE_VAULT_PASSWORD }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_KEY }}" > ~/.ssh/metoffice_weather.pem
+          chmod 600 ~/.ssh/metoffice_weather.pem
+
+          ansible-playbook ansible/deploy.yml \
+            -i ansible/aws_ec2.yml \
+            --vault-password-file <(echo "$ANSIBLE_VAULT_PASSWORD") \
+            -u ubuntu \
+            --private-key ~/.ssh/metoffice_weather.pem \
+            -e "image_tag=${{ github.sha }}" \
+            -e "docker_user=${{ secrets.DOCKER_USER }}" \
+            -e "docker_pat=${{ secrets.DOCKER_PAT }}"

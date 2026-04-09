@@ -1,0 +1,47 @@
+- name: Create app directory
+  file:
+    path: /srv/metoffice_weather
+    state: directory
+    owner: ubuntu
+    group: ubuntu
+    mode: "0755"
+
+# - name: Removed Old Docker Images
+#   command: docker rmi $(docker images -q) || true
+
+- name: Pull image
+  command: docker pull shailendershrma/metoffice_weather:{{ image_tag }}
+
+- name: Update compose file
+  template:
+    src: docker-compose.prod.yml.j2
+    dest: /srv/metoffice_weather/docker-compose.prod.yml
+
+
+- name: Copy nginx config
+  copy:
+    src: nginx.conf
+    dest: /srv/metoffice_weather/nginx.conf
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Create migrations
+  command: docker compose -f docker-compose.prod.yml run --rm metoffice_weather python manage.py makemigrations --noinput
+  args:
+    chdir: /srv/metoffice_weather
+  ignore_errors: yes
+
+- name: Run database migrations
+  command: docker compose -f docker-compose.prod.yml run --rm metoffice_weather python manage.py migrate
+  args:
+    chdir: /srv/metoffice_weather
+  ignore_errors: yes
+
+- name: Restart services
+  command: docker compose -f docker-compose.prod.yml up -d
+  args:
+    chdir: /srv/metoffice_weather
+  
+- name: Reset SSH connection to apply docker group
+  meta: reset_connection
