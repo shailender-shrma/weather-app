@@ -62,35 +62,9 @@ TEMPLATES = [
 WSGI_APPLICATION = 'metoffice_weather.wsgi.application'
 
 # Database — uses PostgreSQL in production, SQLite locally
-if os.getenv('DATABASE_URL'):
-    import re
-    db_url = os.getenv('DATABASE_URL')
-    # Parse postgres://user:pass@host:port/dbname
-    match = re.match(r'postgres(?:ql)?://([^:]+):([^@]+)@([^:]+):(\d+)/(.+)', db_url)
-    if match:
-        DATABASES = {
-            'default': {
-                'ENGINE': 'django.db.backends.postgresql',
-                'NAME': match.group(5),
-                'USER': match.group(1),
-                'PASSWORD': match.group(2),
-                'HOST': match.group(3),
-                'PORT': match.group(4),
-            }
-        }
-    else:
-        DATABASES = {'default': {'ENGINE': 'django.db.backends.sqlite3', 'NAME': BASE_DIR / 'db.sqlite3'}}
-else:
-    DATABASES = {
-        'default': {
-            'ENGINE': 'django.db.backends.postgresql' if os.getenv('POSTGRES_DB') else 'django.db.backends.sqlite3',
-            'NAME': os.getenv('POSTGRES_DB', str(BASE_DIR / 'db.sqlite3')),
-            'USER': os.getenv('POSTGRES_USER', ''),
-            'PASSWORD': os.getenv('POSTGRES_PASSWORD', ''),
-            'HOST': os.getenv('POSTGRES_HOST', 'db'),
-            'PORT': os.getenv('POSTGRES_PORT', '5432'),
-        }
-    }
+
+DATABASES = {'default': {'ENGINE': 'django.db.backends.sqlite3', 'NAME': BASE_DIR / 'db.sqlite3'}}
+
 
 AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'},
