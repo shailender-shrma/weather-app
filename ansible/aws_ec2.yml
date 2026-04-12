@@ -3,7 +3,7 @@ regions:
   - ap-south-1
 
 filters:
-  tag:Name: Testmetoffice_weather
+  tag:Name: metoffice_weather
 
 compose:
   ansible_host: public_ip_address
