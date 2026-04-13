@@ -6,7 +6,8 @@
     group: ubuntu
     mode: "0755"
 
-
+# - name: Removed Old Docker Images
+#   command: docker rmi $(docker images -q) || true
 
 - name: Pull image
   command: docker pull shailendershrma/metoffice_weather:{{ image_tag }}
@@ -16,6 +17,7 @@
     src: docker-compose.prod.yml.j2
     dest: /srv/metoffice_weather/docker-compose.prod.yml
 
+
 - name: Copy nginx config
   copy:
     src: nginx.conf
@@ -24,196 +26,22 @@
     group: root
     mode: "0644"
 
-- name: Read .env file from server
-  slurp:
-    src: /srv/metoffice_weather/.env
-  register: dotenv_raw
-
-- name: Parse .env into a variable dict
-  set_fact:
-    dotenv: >-
-      {{
-        dotenv_raw.content
-        | b64decode
-        | regex_findall('(?m)^(?!#)([A-Z_]+)\s*=\s*(.+)$')
-        | map('list')
-        | items2dict(key_name=0, value_name=1)
-        | dict2items
-        | map(attribute='value')
-        | zip(
-            dotenv_raw.content
-            | b64decode
-            | regex_findall('(?m)^(?!#)([A-Z_]+)\s*=\s*(.+)$')
-            | map('first')
-          )
-        | list
-      }}
-
-- name: Extract POSTGRES_DB from .env
-  set_fact:
-    env_postgres_db: >-
-      {{
-        dotenv_raw.content | b64decode
-        | regex_search('(?m)^POSTGRES_DB\s*=\s*["\']?([^"\'#\r\n]+)["\']?', '\1')
-        | first | trim
-      }}
-
-- name: Extract POSTGRES_USER from .env
-  set_fact:
-    env_postgres_user: >-
-      {{
-        dotenv_raw.content | b64decode
-        | regex_search('(?m)^POSTGRES_USER\s*=\s*["\']?([^"\'#\r\n]+)["\']?', '\1')
-        | first | trim
-      }}
-
-- name: Extract POSTGRES_PASSWORD from .env
-  set_fact:
-    env_postgres_password: >-
-      {{
-        dotenv_raw.content | b64decode
-        | regex_search('(?m)^POSTGRES_PASSWORD\s*=\s*["\']?([^"\'#\r\n]+)["\']?', '\1')
-        | first | trim
-      }}
-  no_log: true
-
-- name: Extract POSTGRES_HOST from .env (default to "db" if not set)
-  set_fact:
-    env_postgres_host: >-
-      {{
-        (
-          dotenv_raw.content | b64decode
-          | regex_search('(?m)^POSTGRES_HOST\s*=\s*["\']?([^"\'#\r\n]+)["\']?', '\1')
-          or ['db']
-        ) | first | trim
-      }}
-
-- name: Show resolved DB config (password hidden)
-  debug:
-    msg:
-      - "POSTGRES_DB   : {{ env_postgres_db }}"
-      - "POSTGRES_USER : {{ env_postgres_user }}"
-      - "POSTGRES_HOST : {{ env_postgres_host }}"
-      - "POSTGRES_PASS : *** (hidden)"
-
-- name: Bring up only the db service
-  command: docker compose -f docker-compose.prod.yml up -d db
+- name: Create migrations
+  command: docker compose -f docker-compose.prod.yml run --rm metoffice_weather python manage.py makemigrations --noinput
   args:
     chdir: /srv/metoffice_weather
+  ignore_errors: yes
 
-- name: Wait for PostgreSQL to be ready (up to 60 s)
-  command: >
-    docker compose -f docker-compose.prod.yml exec -T db
-      pg_isready -U {{ env_postgres_user }} -d postgres
+- name: Run database migrations
+  command: docker compose -f docker-compose.prod.yml run --rm metoffice_weather python manage.py migrate
   args:
     chdir: /srv/metoffice_weather
-  register: pg_ready
-  retries: 12
-  delay: 5
-  until: pg_ready.rc == 0
-  changed_when: false
+  ignore_errors: yes
 
-- name: Check whether database "{{ env_postgres_db }}" exists
-  command: >
-    docker compose -f docker-compose.prod.yml exec -T db
-      psql -U {{ env_postgres_user }} -tAc
-      "SELECT 1 FROM pg_database WHERE datname='{{ env_postgres_db }}';"
+- name: Restart services
+  command: docker compose -f docker-compose.prod.yml up -d
   args:
     chdir: /srv/metoffice_weather
-  register: db_exists
-  changed_when: false
-  environment:
-    PGPASSWORD: "{{ env_postgres_password }}"
-
-- name: Create database "{{ env_postgres_db }}"
-  command: >
-    docker compose -f docker-compose.prod.yml exec -T db
-      psql -U {{ env_postgres_user }} -c
-      "CREATE DATABASE {{ env_postgres_db }} ENCODING 'UTF8' LC_COLLATE 'en_US.utf8' LC_CTYPE 'en_US.utf8' TEMPLATE template0;"
-  args:
-    chdir: /srv/metoffice_weather
-  when: db_exists.stdout.strip() != "1"
-  environment:
-    PGPASSWORD: "{{ env_postgres_password }}"
-
-- name: Grant all privileges on "{{ env_postgres_db }}" to "{{ env_postgres_user }}"
-  command: >
-    docker compose -f docker-compose.prod.yml exec -T db
-      psql -U {{ env_postgres_user }} -c
-      "GRANT ALL PRIVILEGES ON DATABASE {{ env_postgres_db }} TO {{ env_postgres_user }};"
-  args:
-    chdir: /srv/metoffice_weather
-  when: db_exists.stdout.strip() != "1"
-  environment:
-    PGPASSWORD: "{{ env_postgres_password }}"
-
-- name: Database status
-  debug:
-    msg: >-
-      {{
-        'Database "' + env_postgres_db + '" already existed — skipped creation.'
-        if db_exists.stdout.strip() == '1'
-        else 'Database "' + env_postgres_db + '" created successfully.'
-      }}
-
-- name: Create Django migrations (makemigrations)
-  command: >
-    docker compose -f docker-compose.prod.yml run --rm
-      metoffice_weather
-      python manage.py makemigrations --noinput
-  args:
-    chdir: /srv/metoffice_weather
-  register: makemigrations_out
-  ignore_errors: true
-  changed_when: "'No changes detected' not in makemigrations_out.stdout"
-
-- name: Show makemigrations output
-  debug:
-    msg: "{{ makemigrations_out.stdout_lines | default([]) }}"
-
-- name: Apply Django migrations (migrate)
-  command: >
-    docker compose -f docker-compose.prod.yml run --rm
-      metoffice_weather
-      python manage.py migrate --noinput
-  args:
-    chdir: /srv/metoffice_weather
-  register: migrate_out
-  failed_when: migrate_out.rc != 0
-  changed_when: "'No migrations to apply' not in migrate_out.stdout"
-
-- name: Show migrate output
-  debug:
-    msg: "{{ migrate_out.stdout_lines }}"
-
-- name: Collect Django static files
-  command: >
-    docker compose -f docker-compose.prod.yml run --rm
-      metoffice_weather
-      python manage.py collectstatic --noinput
-  args:
-    chdir: /srv/metoffice_weather
-  register: collectstatic_out
-  changed_when: "'0 static files' not in collectstatic_out.stdout"
-
-- name: Start / restart all services
-  command: docker compose -f docker-compose.prod.yml up -d --remove-orphans
-  args:
-    chdir: /srv/metoffice_weather
-
-- name: Wait for application health check
-  uri:
-    url: "http://localhost/api/meta/"
-    status_code: 200
-    timeout: 10
-  register: health
-  retries: 10
-  delay: 8
-  until: health.status == 200
-
-- name: Health check passed
-  debug:
-    msg: "✅ App is up — /api/meta/ returned HTTP {{ health.status }}"
-
+  
 - name: Reset SSH connection to apply docker group
   meta: reset_connection
