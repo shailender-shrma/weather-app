@@ -27,9 +27,6 @@
   args:
     chdir: /srv/metoffice_weather
 
-- name: Wait for DB
-  shell: |
-    until docker exec metoffice_weather-db pg_isready; do sleep 2; done
 
 - name: Run database migrations
   command: docker compose -f docker-compose.prod.yml run --rm --no-deps metoffice_weather python manage.py migrate
