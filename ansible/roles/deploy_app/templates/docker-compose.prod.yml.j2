@@ -1,20 +1,48 @@
-
 volumes:
   static_volume:
   media_volume:
+  postgres_data:        # persistent DB storage — survives container restarts
 
 services:
+  db:
+    image: postgres:15-alpine
+    container_name: metoffice_weather-db
+    restart: always
+    env_file:
+      - /etc/metoffice_weather/.env
+    # postgres image auto-reads POSTGRES_DB / POSTGRES_USER / POSTGRES_PASSWORD
+    # from env_file — database is created on first startup automatically
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - metoffice_weather_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+
   metoffice_weather:
     image: shailendershrma/metoffice_weather:{{ image_tag }}
     container_name: metoffice_weather
-    command: gunicorn metoffice_weather.wsgi:application --bind 0.0.0.0:8000
+    command: gunicorn metoffice_weather.wsgi:application --bind 0.0.0.0:8000 --workers 3 --timeout 120
     env_file:
       - /etc/metoffice_weather/.env
     volumes:
       - static_volume:/usr/src/metoffice_weather/staticfiles
       - media_volume:/usr/src/metoffice_weather/media
     depends_on:
-      - redis
+      db:
+        condition: service_healthy   # waits for postgres healthcheck to pass
+      redis:
+        condition: service_started
     restart: always
     networks:
       - metoffice_weather_net
@@ -25,6 +53,7 @@ services:
       retries: 3
       start_period: 40s
 
+
   worker:
     image: shailendershrma/metoffice_weather:{{ image_tag }}
     container_name: metoffice_weather-worker
@@ -32,10 +61,14 @@ services:
     env_file:
       - /etc/metoffice_weather/.env
     depends_on:
-      - redis
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
     restart: always
     networks:
       - metoffice_weather_net
+
 
   beat:
     image: shailendershrma/metoffice_weather:{{ image_tag }}
@@ -44,10 +77,14 @@ services:
     env_file:
       - /etc/metoffice_weather/.env
     depends_on:
-      - redis
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
     restart: always
     networks:
       - metoffice_weather_net
+
 
   redis:
     image: redis:alpine
@@ -55,6 +92,7 @@ services:
     restart: always
     networks:
       - metoffice_weather_net
+
 
   nginx:
     image: nginx:alpine
@@ -71,7 +109,6 @@ services:
     restart: always
     networks:
       - metoffice_weather_net
-
 
 networks:
   metoffice_weather_net:
