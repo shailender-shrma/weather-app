@@ -36,7 +36,7 @@ services:
       retries: 5
 
   metoffice_weather:
-    image: shailendershrma/metoffice_weather:${IMAGE_TAG:-latest}
+    image: shailendershrma/metoffice_weather:{{ image_tag }}
     container_name: metoffice_weather
     command: gunicorn metoffice_weather.wsgi:application --bind 0.0.0.0:8000 --workers 3 --timeout 120
     env_file:
@@ -60,7 +60,7 @@ services:
       start_period: 40s
 
   worker:
-    image: shailendershrma/metoffice_weather:${IMAGE_TAG:-latest}
+    image: shailendershrma/metoffice_weather:{{ image_tag }}
     container_name: metoffice_weather-worker
     command: celery -A metoffice_weather worker --loglevel=info
     env_file:
@@ -75,7 +75,7 @@ services:
       - metoffice_weather_net
 
   beat:
-    image: shailendershrma/metoffice_weather:${IMAGE_TAG:-latest}
+    image: shailendershrma/metoffice_weather:{{ image_tag }}
     container_name: metoffice_weather-beat
     command: celery -A metoffice_weather beat --loglevel=info
     env_file:
