@@ -281,6 +281,22 @@ metoffice_weather/
 │   ├── wsgi.py
 │   └── celery.py                 # Celery app config
 │
+ansible/
+│   ├── aws_ec2.yml
+│   ├── deploy.yml
+│   ├── vault.yml
+│   ├── Docker
+│   │    └── Dockerfile
+│   ├── roles/
+│   │   ├── docker/
+│   │   │   └── tasks/
+│   │   │       └── main.yml
+│   │   ├── secrets/
+│   │   │   └── tasks/
+│   │   │       └── main.yml
+│   │   └── deploy_apps/
+│   │       └── tasks/
+│   │           └── main.yml
 ├── weather/                      # Main application
 │   ├── models.py                 # Parameter, Region, WeatherDataset, WeatherRecord
 │   ├── parsers.py                # Met Office .txt file fetcher and parser
