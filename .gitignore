@@ -23,7 +23,7 @@ migrations/
 .env
 .env.local
 .env.*.local
-
+env
 # IDEs
 .vscode/
 .idea/
