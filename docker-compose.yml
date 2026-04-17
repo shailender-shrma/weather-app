@@ -6,7 +6,7 @@ services:
     build:
       context: .
       dockerfile: ansible/docker/Dockerfile
-    environment:
+    env_file:
       - .env
     command: > 
               sh -c "python manage.py makemigrations &&
@@ -15,8 +15,9 @@ services:
     ports:
       - 8000:8000
     volumes:
-      - ./:/usr/src/teamreport
+      - ./:/usr/src/metoffice_weather
     restart: always
+
   metoffice-weather-worker:
     
     environment:
@@ -25,11 +26,11 @@ services:
       context: .
       dockerfile: ansible/docker/Dockerfile
     command: >
-              celery -A teamreport worker --loglevel=info
+              celery -A metoffice_weather worker --loglevel=info
     volumes:
-      - ./:/usr/src/teamreport
-      - static_volume:/usr/src/teamreport/staticfiles
-      - media_volume:/usr/src/teamreport/media
+      - ./:/usr/src/metoffice_weather
+      - static_volume:/usr/src/metoffice_weather/staticfiles
+      - media_volume:/usr/src/metoffice_weather/media
     restart: always
   metoffice-weather-beat:
     
@@ -39,9 +40,9 @@ services:
     environment:
       - .env
     command: >
-              celery -A teamreport beat --loglevel=info
+              celery -A metoffice_weather beat --loglevel=info
     volumes:
-      - ./:/usr/src/teamreport
+      - ./:/usr/src/metoffice_weather
     restart: always
   redis:
     image: "redis:alpine"
@@ -54,4 +55,4 @@ volumes:
   redis_data:
   static_volume:
   media_volume:
-  
+
